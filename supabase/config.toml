@@ -1,0 +1,2 @@
+[functions.compare-item]
+verify_jwt = false
