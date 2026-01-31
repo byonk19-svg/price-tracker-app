@@ -294,6 +294,7 @@ function App() {
   const [showAddList, setShowAddList] = useState(false);
   const [newListName, setNewListName] = useState('');
   const [newItem, setNewItem] = useState({ name: '', url: '', notes: '' });
+  const [newItemUrlStatus, setNewItemUrlStatus] = useState({ ok: true, message: '', retailer: null });
   const [checkingPrices, setCheckingPrices] = useState(false);
   const [toast, setToast] = useState(null);
   const [showExtensionHint, setShowExtensionHint] = useState(true);
@@ -497,6 +498,33 @@ function App() {
     }
   };
 
+  const validateRetailerUrl = (url) => {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      return { ok: true, message: '', retailer: null };
+    }
+
+    try {
+      const parsed = new URL(trimmed);
+      if (!parsed.hostname) {
+        return { ok: false, message: 'Enter a valid URL from Target, Walmart, or Amazon.', retailer: null };
+      }
+    } catch {
+      return { ok: false, message: 'Enter a valid URL from Target, Walmart, or Amazon.', retailer: null };
+    }
+
+    const retailer = getRetailerFromUrl(trimmed);
+    if (!retailer) {
+      return {
+        ok: false,
+        message: 'This app only tracks Target, Walmart, and Amazon links. Paste a supported product URL or leave it blank.',
+        retailer: null
+      };
+    }
+
+    return { ok: true, message: '', retailer };
+  };
+
   const handlePasteIntoNewItem = (field) => (e) => {
     const text = e.clipboardData?.getData('text');
     if (!text) return;
@@ -508,6 +536,9 @@ function App() {
       }
       return next;
     });
+    if (field === 'url') {
+      setNewItemUrlStatus(validateRetailerUrl(text));
+    }
   };
 
   const pasteFromClipboard = async (field) => {
@@ -521,7 +552,16 @@ function App() {
         showToast('Clipboard is empty.', 'error');
         return;
       }
-      setNewItem((prev) => ({ ...prev, [field]: text }));
+      setNewItem((prev) => {
+        const next = { ...prev, [field]: text };
+        if (field === 'url' && !prev.name.trim()) {
+          next.name = deriveNameFromUrl(text);
+        }
+        return next;
+      });
+      if (field === 'url') {
+        setNewItemUrlStatus(validateRetailerUrl(text));
+      }
     } catch {
       showToast('Clipboard access blocked. Try right-click paste.', 'error');
     }
@@ -532,6 +572,10 @@ function App() {
     const trimmedUrl = newItem.url.trim();
     if (!trimmedName && !trimmedUrl) {
       showToast('Please enter a product name or paste a URL.', 'error');
+      return;
+    }
+    if (trimmedUrl && !newItemUrlStatus.ok) {
+      showToast('Please use a valid Target, Walmart, or Amazon URL.', 'error');
       return;
     }
     const finalName = trimmedName || deriveNameFromUrl(trimmedUrl);
@@ -560,6 +604,7 @@ function App() {
 
     // Clear form immediately - item is saved
     setNewItem({ name: '', url: '', notes: '' });
+    setNewItemUrlStatus({ ok: true, message: '', retailer: null });
     setShowAddItem(false);
     
     // Reload to show new item with "Searching..." status
@@ -954,7 +999,11 @@ function App() {
                         type="url"
                         placeholder="Product URL (optional)"
                         value={newItem.url}
-                        onChange={(e) => setNewItem({...newItem, url: e.target.value})}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setNewItem({ ...newItem, url: value });
+                          setNewItemUrlStatus(validateRetailerUrl(value));
+                        }}
                         onPaste={handlePasteIntoNewItem('url')}
                         className="flex-1 px-3 py-2 border rounded"
                       />
@@ -967,6 +1016,22 @@ function App() {
                         Paste
                       </button>
                     </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-gray-600">
+                      <span className="font-semibold text-gray-700">Supported retailers:</span>
+                      <span className="px-2 py-1 rounded-full bg-white border border-gray-200">Amazon</span>
+                      <span className="px-2 py-1 rounded-full bg-white border border-gray-200">Walmart</span>
+                      <span className="px-2 py-1 rounded-full bg-white border border-gray-200">Target</span>
+                      {newItemUrlStatus.retailer && (
+                        <span className="px-2 py-1 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                          Detected: {newItemUrlStatus.retailer}
+                        </span>
+                      )}
+                    </div>
+                    {!newItemUrlStatus.ok && (
+                      <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">
+                        {newItemUrlStatus.message}
+                      </div>
+                    )}
                     <textarea
                       placeholder="Notes (optional)"
                       value={newItem.notes}
@@ -978,9 +1043,9 @@ function App() {
                     <div className="flex gap-2">
                       <button
                         onClick={addItem}
-                        disabled={!newItem.name.trim() && !newItem.url.trim()}
+                        disabled={(!newItem.name.trim() && !newItem.url.trim()) || !newItemUrlStatus.ok}
                         className={`flex-1 px-4 py-2 rounded text-white ${
-                          newItem.name.trim() || newItem.url.trim()
+                          (newItem.name.trim() || newItem.url.trim()) && newItemUrlStatus.ok
                             ? 'bg-indigo-600 hover:bg-indigo-700'
                             : 'bg-gray-400 cursor-not-allowed'
                         }`}
