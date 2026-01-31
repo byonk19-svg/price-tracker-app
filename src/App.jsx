@@ -293,7 +293,8 @@ function App() {
   const [showAddItem, setShowAddItem] = useState(false);
   const [showAddList, setShowAddList] = useState(false);
   const [newListName, setNewListName] = useState('');
-  const [newItem, setNewItem] = useState({ name: '', url: '', notes: '' });
+  const defaultRetailerUrls = { amazon: '', walmart: '', target: '' };
+  const [newItem, setNewItem] = useState({ name: '', url: '', notes: '', retailerUrls: defaultRetailerUrls });
   const [checkingPrices, setCheckingPrices] = useState(false);
   const [toast, setToast] = useState(null);
   const [showExtensionHint, setShowExtensionHint] = useState(true);
@@ -510,6 +511,20 @@ function App() {
     });
   };
 
+  const handlePasteIntoRetailerUrl = (retailer) => (e) => {
+    const text = e.clipboardData?.getData('text');
+    if (!text) return;
+    e.preventDefault();
+    setNewItem((prev) => {
+      const nextRetailerUrls = { ...prev.retailerUrls, [retailer]: text };
+      const next = { ...prev, retailerUrls: nextRetailerUrls };
+      if (!prev.name.trim()) {
+        next.name = deriveNameFromUrl(text);
+      }
+      return next;
+    });
+  };
+
   const pasteFromClipboard = async (field) => {
     if (!navigator.clipboard?.readText) {
       showToast('Clipboard API not available in this browser.', 'error');
@@ -527,21 +542,55 @@ function App() {
     }
   };
 
+  const pasteRetailerUrlFromClipboard = async (retailer) => {
+    if (!navigator.clipboard?.readText) {
+      showToast('Clipboard API not available in this browser.', 'error');
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) {
+        showToast('Clipboard is empty.', 'error');
+        return;
+      }
+      setNewItem((prev) => ({
+        ...prev,
+        retailerUrls: { ...prev.retailerUrls, [retailer]: text }
+      }));
+    } catch {
+      showToast('Clipboard access blocked. Try right-click paste.', 'error');
+    }
+  };
+
   const addItem = async () => {
     const trimmedName = newItem.name.trim();
     const trimmedUrl = newItem.url.trim();
-    if (!trimmedName && !trimmedUrl) {
+    const trimmedRetailerUrls = Object.entries(newItem.retailerUrls || {})
+      .reduce((acc, [retailer, url]) => {
+        const cleaned = url.trim();
+        if (cleaned) acc[retailer] = cleaned;
+        return acc;
+      }, {});
+    const hasRetailerUrl = Object.keys(trimmedRetailerUrls).length > 0;
+
+    if (!trimmedName && !trimmedUrl && !hasRetailerUrl) {
       showToast('Please enter a product name or paste a URL.', 'error');
       return;
     }
-    const finalName = trimmedName || deriveNameFromUrl(trimmedUrl);
+    const fallbackUrl = trimmedRetailerUrls.amazon
+      || trimmedRetailerUrls.walmart
+      || trimmedRetailerUrls.target
+      || '';
+    const finalUrl = trimmedUrl || fallbackUrl;
+    const finalName = trimmedName || deriveNameFromUrl(finalUrl);
     
     const { data, error } = await supabase
       .from('items')
       .insert([{
         list_id: selectedList,
         name: finalName,
-        url: trimmedUrl || null,
+        url: finalUrl || null,
+        retailer_urls: hasRetailerUrl ? trimmedRetailerUrls : null,
         notes: newItem.notes || null,
         compare_status: 'running',
         compare_started_at: new Date().toISOString(),
@@ -559,7 +608,7 @@ function App() {
     const productName = finalName;
 
     // Clear form immediately - item is saved
-    setNewItem({ name: '', url: '', notes: '' });
+    setNewItem({ name: '', url: '', notes: '', retailerUrls: defaultRetailerUrls });
     setShowAddItem(false);
     
     // Reload to show new item with "Searching..." status
@@ -940,6 +989,9 @@ function App() {
               {showAddItem && (
                 <div className="mb-6 p-4 bg-indigo-50 rounded-lg border-2 border-indigo-200">
                   <h3 className="font-semibold mb-3">Add New Item</h3>
+                  <p className="text-sm text-indigo-800 mb-3">
+                    For the most accurate (and free) tracking, paste the exact retailer product links below.
+                  </p>
                   <div className="space-y-3">
                     <input
                       type="text"
@@ -966,6 +1018,40 @@ function App() {
                       >
                         Paste
                       </button>
+                    </div>
+                    <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-indigo-800 mb-2">
+                        <span>⭐ Recommended: paste retailer URLs</span>
+                      </div>
+                      <p className="text-xs text-indigo-700 mb-3">
+                        Modern retailer sites block automated scraping. Paste direct product links to get reliable matches.
+                      </p>
+                      <div className="space-y-2">
+                        {['amazon', 'walmart', 'target'].map((retailer) => (
+                          <div key={retailer} className="flex gap-2 items-center">
+                            <label className="w-20 text-xs font-semibold text-gray-600 capitalize">{retailer}</label>
+                            <input
+                              type="url"
+                              placeholder={`https://${retailer}.com/...`}
+                              value={newItem.retailerUrls?.[retailer] || ''}
+                              onChange={(e) => setNewItem((prev) => ({
+                                ...prev,
+                                retailerUrls: { ...prev.retailerUrls, [retailer]: e.target.value }
+                              }))}
+                              onPaste={handlePasteIntoRetailerUrl(retailer)}
+                              className="flex-1 px-3 py-2 border rounded"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => pasteRetailerUrlFromClipboard(retailer)}
+                              className="px-2 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-xs"
+                              title={`Paste ${retailer} URL`}
+                            >
+                              Paste
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     <textarea
                       placeholder="Notes (optional)"
