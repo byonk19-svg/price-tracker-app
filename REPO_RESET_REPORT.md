@@ -11,24 +11,25 @@
 ## Commands Run
 
 - `git fetch origin` - passed
-- `npm install` - skipped to avoid mutating pre-existing package edits
+- `npm install` - passed, 9 vulnerabilities reported
 - `npm run lint` - failed with 30 errors and 3 warnings
 - `npm run build` - passed
 
 ## Files Changed
 
-- `.env.example`
 - `REPO_RESET_REPORT.md`
 
 ## What Was Fixed
 
-- Added missing `.env.example` key names only: `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`.
+- No code fixes were made. The repo already had substantial uncommitted app work before this pass, so the reset pass stayed report-only.
 
 ## Remaining Issues
 
 - The repo had substantial pre-existing uncommitted app, extension, script, Supabase, and package changes before this pass.
 - Lint currently fails on pre-existing extension globals (`chrome`) and unused variables in app and modal code.
+- `npm install` reports 9 vulnerabilities. No dependency upgrade was made during this safe reset pass.
 - No test script is configured, and adding test tooling would exceed this safe reset pass.
+- `.env.example` is present but remains part of the pre-existing untracked work, not this report-only commit.
 - `supabase/.env` is untracked and should be reviewed for secrets before any broad staging.
 
 ## Recommended Next 3 Actions
